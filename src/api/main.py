@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import os
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from PIL import Image
@@ -21,8 +22,13 @@ CLASS_NAMES = [
     "truck",
 ]
 
-CHECKPOINT_PATH = Path("artifacts/checkpoints/best_model.pt")
 
+CHECKPOINT_PATH = Path(
+    os.getenv(
+        "MODEL_PATH",
+        "artifacts/checkpoints/best_model.pt",
+    )
+)
 DEVICE = torch.device(
     "cuda"
     if torch.cuda.is_available()

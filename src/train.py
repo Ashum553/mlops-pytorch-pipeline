@@ -1,6 +1,7 @@
 from pathlib import Path
 import random
 
+import os
 import mlflow
 import mlflow.pytorch
 import numpy as np
@@ -53,13 +54,17 @@ def evaluate(model, loader, criterion, device):
 
 def main():
 
-    config_path = Path("configs/training_config.yaml")
+    config_path = Path(
+        os.getenv(
+            "TRAINING_CONFIG",
+            "configs/training_config.yaml",
+        )
+    )
 
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
     seed = config["seed"]
-
     set_seed(seed)
 
     device = torch.device(
@@ -99,13 +104,18 @@ def main():
         weight_decay=training_config["weight_decay"],
     )
 
-    checkpoint_dir = Path(checkpoint_config["dir"])
+    checkpoint_dir = Path(
+        os.getenv(
+            "CHECKPOINT_DIR",
+            checkpoint_config["dir"],
+        )
+    )
+
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = checkpoint_dir / checkpoint_config["filename"]
 
     epochs = training_config["epochs"]
-
     best_accuracy = 0.0
     epochs_without_improvement = 0
 
