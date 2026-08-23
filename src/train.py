@@ -1,6 +1,8 @@
 from pathlib import Path
 import random
 
+import mlflow
+import mlflow.pytorch
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,7 +23,7 @@ def set_seed(seed: int) -> None:
 
 
 def evaluate(model, loader, criterion, device):
-    """Evaluate model on validation/test data."""
+    """Evaluate model."""
     model.eval()
 
     total_loss = 0.0
@@ -39,6 +41,7 @@ def evaluate(model, loader, criterion, device):
             total_loss += loss.item() * images.size(0)
 
             predictions = outputs.argmax(dim=1)
+
             correct += (predictions == labels).sum().item()
             total += labels.size(0)
 
@@ -49,17 +52,21 @@ def evaluate(model, loader, criterion, device):
 
 
 def main():
+
     config_path = Path("configs/training_config.yaml")
 
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
     seed = config["seed"]
+
     set_seed(seed)
 
     device = torch.device(
-        "cuda" if torch.cuda.is_available()
-        else "mps" if torch.backends.mps.is_available()
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
         else "cpu"
     )
 
@@ -102,89 +109,133 @@ def main():
     best_accuracy = 0.0
     epochs_without_improvement = 0
 
-    for epoch in range(1, epochs + 1):
+    mlflow.set_experiment("cifar10_cnn")
 
-        model.train()
+    with mlflow.start_run(run_name="cnn_training"):
 
-        running_loss = 0.0
-        correct = 0
-        total = 0
-
-        for images, labels in train_loader:
-
-            images = images.to(device)
-            labels = labels.to(device)
-
-            optimizer.zero_grad()
-
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item() * images.size(0)
-
-            predictions = outputs.argmax(dim=1)
-            correct += (predictions == labels).sum().item()
-            total += labels.size(0)
-
-        train_loss = running_loss / total
-        train_accuracy = correct / total
-
-        test_loss, test_accuracy = evaluate(
-            model,
-            test_loader,
-            criterion,
-            device,
+        mlflow.log_params(
+            {
+                "architecture": model_config["architecture"],
+                "epochs": training_config["epochs"],
+                "batch_size": data_config["batch_size"],
+                "learning_rate": training_config["learning_rate"],
+                "weight_decay": training_config["weight_decay"],
+                "seed": seed,
+                "device": str(device),
+            }
         )
 
-        print(
-            f"Epoch {epoch}/{epochs} | "
-            f"Train Loss: {train_loss:.4f} | "
-            f"Train Accuracy: {train_accuracy:.4f} | "
-            f"Test Loss: {test_loss:.4f} | "
-            f"Test Accuracy: {test_accuracy:.4f}"
-        )
+        for epoch in range(1, epochs + 1):
 
-        if test_accuracy > best_accuracy + early_config["min_delta"]:
+            model.train()
 
-            best_accuracy = test_accuracy
-            epochs_without_improvement = 0
+            running_loss = 0.0
+            correct = 0
+            total = 0
 
-            torch.save(
+            for images, labels in train_loader:
+
+                images = images.to(device)
+                labels = labels.to(device)
+
+                optimizer.zero_grad()
+
+                outputs = model(images)
+
+                loss = criterion(outputs, labels)
+
+                loss.backward()
+
+                optimizer.step()
+
+                running_loss += loss.item() * images.size(0)
+
+                predictions = outputs.argmax(dim=1)
+
+                correct += (predictions == labels).sum().item()
+
+                total += labels.size(0)
+
+            train_loss = running_loss / total
+            train_accuracy = correct / total
+
+            test_loss, test_accuracy = evaluate(
+                model,
+                test_loader,
+                criterion,
+                device,
+            )
+
+            print(
+                f"Epoch {epoch}/{epochs} | "
+                f"Train Loss: {train_loss:.4f} | "
+                f"Train Accuracy: {train_accuracy:.4f} | "
+                f"Test Loss: {test_loss:.4f} | "
+                f"Test Accuracy: {test_accuracy:.4f}"
+            )
+
+            mlflow.log_metrics(
                 {
-                    "model_state_dict": model.state_dict(),
-                    "architecture": model_config["architecture"],
-                    "num_classes": model_config["num_classes"],
+                    "train_loss": train_loss,
+                    "train_accuracy": train_accuracy,
+                    "test_loss": test_loss,
                     "test_accuracy": test_accuracy,
-                    "epoch": epoch,
                 },
-                checkpoint_path,
+                step=epoch,
             )
 
-            print(
-                f"  ✓ Saved best model → {checkpoint_path}"
-            )
+            if test_accuracy > best_accuracy + early_config["min_delta"]:
 
-        else:
-            epochs_without_improvement += 1
+                best_accuracy = test_accuracy
 
-        if (
-            early_config["enabled"]
-            and epochs_without_improvement >= early_config["patience"]
-        ):
-            print(
-                f"Early stopping triggered after epoch {epoch}."
-            )
-            break
+                epochs_without_improvement = 0
 
-    print()
-    print("Training complete.")
-    print(f"Best test accuracy: {best_accuracy:.4f}")
-    print(f"Checkpoint: {checkpoint_path}")
+                torch.save(
+                    {
+                        "model_state_dict": model.state_dict(),
+                        "architecture": model_config["architecture"],
+                        "num_classes": model_config["num_classes"],
+                        "test_accuracy": test_accuracy,
+                        "epoch": epoch,
+                    },
+                    checkpoint_path,
+                )
+
+                print(
+                    f"  ✓ Saved best model → {checkpoint_path}"
+                )
+
+            else:
+
+                epochs_without_improvement += 1
+
+            if (
+                early_config["enabled"]
+                and epochs_without_improvement
+                >= early_config["patience"]
+            ):
+
+                print(
+                    f"Early stopping triggered after epoch {epoch}."
+                )
+
+                break
+
+        mlflow.log_metric(
+            "best_test_accuracy",
+            best_accuracy,
+        )
+
+        mlflow.log_artifact(
+            str(checkpoint_path),
+            artifact_path="checkpoints",
+        )
+
+        print()
+        print("Training complete.")
+        print(f"Best test accuracy: {best_accuracy:.4f}")
+        print(f"Checkpoint: {checkpoint_path}")
 
 
 if __name__ == "__main__":
     main()
-
