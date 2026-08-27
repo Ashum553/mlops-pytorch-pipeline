@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+
+kind: Job
+
+metadata:
+  name: cifar10-training
+  namespace: mlops-cifar10
+
+spec:
+  backoffLimit: 0
+
+  template:
+    metadata:
+      labels:
+        app: cifar10-training
+
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: trainer
+
+          image: mlops-cifar10-train:latest
+          imagePullPolicy: Never
+
+          env:
+            - name: TRAINING_CONFIG
+              value: /app/configs/training_config.yaml
+
+            - name: CHECKPOINT_DIR
+              value: /app/checkpoints
+
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+
+          volumeMounts:
+            - name: training-config
+              mountPath: /app/configs/training_config.yaml
+              subPath: training_config.yaml
+
+            - name: cifar10-data
+              mountPath: /app/data
+              readOnly: true
+
+            - name: checkpoints
+              mountPath: /app/checkpoints
+
+      volumes:
+        - name: training-config
+          configMap:
+            name: training-config
+
+        - name: cifar10-data
+          persistentVolumeClaim:
+            claimName: cifar10-data
+
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: cifar10-checkpoints

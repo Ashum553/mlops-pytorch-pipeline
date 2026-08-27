@@ -26,3 +26,6 @@ htmlcov/
 
 # Docker
 *.log
+
+mlflow.db
+mlruns/
