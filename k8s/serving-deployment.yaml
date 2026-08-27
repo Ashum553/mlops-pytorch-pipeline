@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: cifar10-serving
+  namespace: mlops-cifar10
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: cifar10-serving
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: cifar10-serving
+
+    spec:
+      containers:
+        - name: api
+
+          image: mlops-cifar10-serve:latest
+
+          imagePullPolicy: Never
+
+          ports:
+            - containerPort: 8080
+
+          env:
+            - name: MODEL_PATH
+              value: /app/checkpoints/best_model.pt
+
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /app/checkpoints
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+
+      volumes:
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: cifar10-checkpoints
