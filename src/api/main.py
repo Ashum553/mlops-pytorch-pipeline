@@ -1,13 +1,12 @@
+import os
 from pathlib import Path
 
-import os
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from PIL import Image
 from torchvision import transforms
 
 from src.model import get_model
-
 
 CLASS_NAMES = [
     "airplane",

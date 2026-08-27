@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import torch
-
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -10,7 +9,6 @@ from sklearn.metrics import (
 
 from src.dataset import get_dataloaders
 from src.model import get_model
-
 
 CLASS_NAMES = [
     "airplane",
