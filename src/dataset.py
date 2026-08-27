@@ -4,7 +4,6 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2470, 0.2435, 0.2616)
 

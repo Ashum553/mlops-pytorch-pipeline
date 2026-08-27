@@ -1,13 +1,13 @@
-from pathlib import Path
-import random
-
 import os
+import random
+from pathlib import Path
+
 import mlflow
 import mlflow.pytorch
 import numpy as np
 import torch
-import torch.nn as nn
 import yaml
+from torch import nn
 
 from src.dataset import get_dataloaders
 from src.model import get_model
