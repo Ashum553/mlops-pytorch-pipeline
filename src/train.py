@@ -1,3 +1,4 @@
+import json
 import os
 import random
 from pathlib import Path
@@ -42,7 +43,6 @@ def evaluate(model, loader, criterion, device):
             total_loss += loss.item() * images.size(0)
 
             predictions = outputs.argmax(dim=1)
-
             correct += (predictions == labels).sum().item()
             total += labels.size(0)
 
@@ -53,7 +53,6 @@ def evaluate(model, loader, criterion, device):
 
 
 def main():
-
     config_path = Path(
         os.getenv(
             "TRAINING_CONFIG",
@@ -75,7 +74,14 @@ def main():
         else "cpu"
     )
 
-    print(f"Using device: {device}")
+    print(
+        json.dumps(
+            {
+                "event": "startup",
+                "device": str(device),
+            }
+        )
+    )
 
     data_config = config["data"]
     model_config = config["model"]
@@ -116,13 +122,13 @@ def main():
     checkpoint_path = checkpoint_dir / checkpoint_config["filename"]
 
     epochs = training_config["epochs"]
+
     best_accuracy = 0.0
     epochs_without_improvement = 0
 
     mlflow.set_experiment("cifar10_cnn")
 
     with mlflow.start_run(run_name="cnn_training"):
-
         mlflow.log_params(
             {
                 "architecture": model_config["architecture"],
@@ -136,7 +142,6 @@ def main():
         )
 
         for epoch in range(1, epochs + 1):
-
             model.train()
 
             running_loss = 0.0
@@ -144,26 +149,21 @@ def main():
             total = 0
 
             for images, labels in train_loader:
-
                 images = images.to(device)
                 labels = labels.to(device)
 
                 optimizer.zero_grad()
 
                 outputs = model(images)
-
                 loss = criterion(outputs, labels)
 
                 loss.backward()
-
                 optimizer.step()
 
                 running_loss += loss.item() * images.size(0)
 
                 predictions = outputs.argmax(dim=1)
-
                 correct += (predictions == labels).sum().item()
-
                 total += labels.size(0)
 
             train_loss = running_loss / total
@@ -177,11 +177,17 @@ def main():
             )
 
             print(
-                f"Epoch {epoch}/{epochs} | "
-                f"Train Loss: {train_loss:.4f} | "
-                f"Train Accuracy: {train_accuracy:.4f} | "
-                f"Test Loss: {test_loss:.4f} | "
-                f"Test Accuracy: {test_accuracy:.4f}"
+                json.dumps(
+                    {
+                        "event": "epoch",
+                        "epoch": epoch,
+                        "total_epochs": epochs,
+                        "train_loss": round(train_loss, 4),
+                        "train_accuracy": round(train_accuracy, 4),
+                        "test_loss": round(test_loss, 4),
+                        "test_accuracy": round(test_accuracy, 4),
+                    }
+                )
             )
 
             mlflow.log_metrics(
@@ -195,9 +201,7 @@ def main():
             )
 
             if test_accuracy > best_accuracy + early_config["min_delta"]:
-
                 best_accuracy = test_accuracy
-
                 epochs_without_improvement = 0
 
                 torch.save(
@@ -212,11 +216,17 @@ def main():
                 )
 
                 print(
-                    f"  ✓ Saved best model → {checkpoint_path}"
+                    json.dumps(
+                        {
+                            "event": "checkpoint_saved",
+                            "epoch": epoch,
+                            "test_accuracy": round(test_accuracy, 4),
+                            "path": str(checkpoint_path),
+                        }
+                    )
                 )
 
             else:
-
                 epochs_without_improvement += 1
 
             if (
@@ -224,11 +234,14 @@ def main():
                 and epochs_without_improvement
                 >= early_config["patience"]
             ):
-
                 print(
-                    f"Early stopping triggered after epoch {epoch}."
+                    json.dumps(
+                        {
+                            "event": "early_stopping",
+                            "epoch": epoch,
+                        }
+                    )
                 )
-
                 break
 
         mlflow.log_metric(
@@ -241,10 +254,15 @@ def main():
             artifact_path="checkpoints",
         )
 
-        print()
-        print("Training complete.")
-        print(f"Best test accuracy: {best_accuracy:.4f}")
-        print(f"Checkpoint: {checkpoint_path}")
+        print(
+            json.dumps(
+                {
+                    "event": "training_complete",
+                    "best_test_accuracy": round(best_accuracy, 4),
+                    "checkpoint": str(checkpoint_path),
+                }
+            )
+        )
 
 
 if __name__ == "__main__":
